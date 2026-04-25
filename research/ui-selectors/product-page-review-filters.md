@@ -34,32 +34,41 @@ Anchor strategy:
 
 | Anchor                                    | Stable? | Notes |
 |-------------------------------------------|---------|-------|
-| `span.country-flag-y2023.IL`              | ✅ Best — `country-flag-y2023` is a versioned design-system class; `IL` is the ISO 3166-1 alpha-2 country code as a class. |
-| `.filter--filterItem--AEUeCbl:has(.country-flag-y2023.IL)` | ✅ Targets the clickable wrapper. |
+| `[class*="country-flag-"].IL`             | ✅✅ Best — version-agnostic. Matches `country-flag-y2023 IL` today and any future `country-flag-y2024`/`country-flag-v2`/etc. roll. The `IL` class is the ISO 3166-1 alpha-2 country code and is unlikely to change. |
+| `span.country-flag-y2023.IL`              | ⚠️ Works today but will break the day AliExpress rolls a new versioned sprite (e.g. `country-flag-y2024`). Use as a fallback only. |
+| `[class*="filter--filterItem--"]:has([class*="country-flag-"].IL)` | ✅ Targets the clickable wrapper. |
 | Class hash `filter--filterItem--AEUeCbl` | ❌ Hashed CSS-module suffix — will rotate per build. Always use the `filter--filterItem--` *prefix* with attribute-prefix selectors, not the full class. |
+
+**Why version-agnostic matters**: `country-flag-y2023` is named after the year of the sprite redesign — it's the second time AliExpress has versioned the flag class (no public history of `y2022`, but the `-y2023` suffix telegraphs that another bump is expected). The `IL` class, by contrast, is just the ISO code and has no reason to change. Anchor on the part that's stable.
 
 Robust selector for the clickable chip:
 ```js
-document.querySelector('[class^="filter--filterItem--"]:has(.country-flag-y2023.IL)')
-// or, if :has() unavailable:
-document.querySelector('.country-flag-y2023.IL').closest('[class*="filter--filterItem--"]')
+// Primary — version-agnostic
+document.querySelector('[class*="country-flag-"].IL')
+  ?.closest('[class*="filter--filterItem--"]');
+
+// :has() variant if you need it in a single selector
+document.querySelector('[class*="filter--filterItem--"]:has([class*="country-flag-"].IL)');
 ```
 
 To click (apply the filter):
 ```js
-document.querySelector('.country-flag-y2023.IL').closest('[class*="filter--filterItem--"]').click();
+document.querySelector('[class*="country-flag-"].IL')
+  ?.closest('[class*="filter--filterItem--"]')
+  ?.click();
 ```
 
 To read the review count for Israel:
 ```js
-const chip = document.querySelector('.country-flag-y2023.IL').closest('[class*="filter--filterItem--"]');
+const chip = document.querySelector('[class*="country-flag-"].IL')
+  ?.closest('[class*="filter--filterItem--"]');
 const m = chip?.textContent.match(/\((\d+)\)/);
-m ? parseInt(m[1], 10) : 0;   // → 1 in the captured sample
+const ilCount = m ? parseInt(m[1], 10) : 0;   // → 1 in the captured sample
 ```
 
 ## The "country-flag-y2023" pattern
 
-This appears to be AliExpress's 2023-era flag sprite class. The class list is `country-flag-y2023 <ISO2>`. Other countries are addressable the same way: `.country-flag-y2023.US`, `.country-flag-y2023.RU`, etc. — though only the country chip(s) for which there is at least one review will render in the review-filter strip on a given product.
+This appears to be AliExpress's 2023-era flag sprite class. The class list is `country-flag-y2023 <ISO2>`. Other countries are addressable the same way: `[class*="country-flag-"].US`, `[class*="country-flag-"].RU`, etc. — though only the country chip(s) for which there is at least one review will render in the review-filter strip on a given product. **Always use the `[class*="country-flag-"]` prefix-contains form** rather than the literal `country-flag-y2023` class, so the selector survives the next versioned roll of the sprite.
 
 Distinct from the listing-page filter, which uses `.css_flag.css_flag_refine.css_<iso-lower>` (e.g. `css_il`). Two different sprite systems on the same site:
 
@@ -74,7 +83,7 @@ Distinct from the listing-page filter, which uses `.css_flag.css_flag_refine.css
 |-----------------------|--------------------------------------------|-----------------|
 | All ratings (dropdown)| `button` containing `comet-icon-chevrondown` | active          |
 | With photos           | `.comet-icon-photo`                        | `(0)` → has `filter--invalid--*` modifier |
-| Reviews from `<ISO2>` | `.country-flag-y2023.<ISO2>`               | `(1)` → active  |
+| Reviews from `<ISO2>` | `[class*="country-flag-"].<ISO2>`          | `(1)` → active  |
 | With text comments    | `.comet-icon-message`                      | `(0)` → has `filter--invalid--*` modifier |
 
 A chip is non-actionable when it carries the `filter--invalid--<hash>` modifier. Detect with `[class*="filter--invalid--"]`.
@@ -92,7 +101,10 @@ When a filter chip is *applied*, the wrapper gains an additional `filter--active
 Detect: `[class*="filter--active--"]`. Read the active filter:
 ```js
 const active = document.querySelector('[class*="filter--filterItem--"][class*="filter--active--"]');
-const country = active?.querySelector('[class^="country-flag-y2023"]')?.classList[1]; // → "IL"
+// Find the flag span (any version), then read the ISO2 from its class list.
+const flag = active?.querySelector('[class*="country-flag-"]');
+const country = [...(flag?.classList || [])]
+  .find(c => /^[A-Z]{2}$/.test(c));   // → "IL"
 ```
 
 So a single chip can carry up to two state modifiers — `filter--invalid--*` (zero count, non-clickable) **or** `filter--active--*` (currently selected). They are mutually exclusive.
